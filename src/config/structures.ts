@@ -7,6 +7,7 @@ export interface StructureTemplate {
   name: string;
   slots: BlockPosition[];
   color: number; // tint color as hex
+  pastelBg: string; // light background hex string for theming
 }
 
 // Positions are relative to the center of the build area (640x360 canvas half-size)
@@ -15,6 +16,7 @@ export const STRUCTURE_TEMPLATES: StructureTemplate[] = [
   {
     name: 'tower',
     color: 0xff6b6b,
+    pastelBg: '#FFF0F0',
     slots: [
       { x: 0, y: 0 },
       { x: 0, y: -68 },
@@ -26,6 +28,7 @@ export const STRUCTURE_TEMPLATES: StructureTemplate[] = [
   {
     name: 'house',
     color: 0x4ecdc4,
+    pastelBg: '#EAFAF8',
     slots: [
       { x: -68, y: 0 },
       { x: 0, y: 0 },
@@ -40,6 +43,7 @@ export const STRUCTURE_TEMPLATES: StructureTemplate[] = [
   {
     name: 'car',
     color: 0xffe66d,
+    pastelBg: '#FFFBE6',
     slots: [
       { x: -68, y: 0 },
       { x: 0, y: 0 },
@@ -52,6 +56,7 @@ export const STRUCTURE_TEMPLATES: StructureTemplate[] = [
   {
     name: 'robot',
     color: 0xa29bfe,
+    pastelBg: '#F0EFFF',
     slots: [
       { x: 0, y: 0 },
       { x: -68, y: -68 },

@@ -7,6 +7,9 @@ const SEQUENCE_Y_RATIO = 0.42;
 const OPTIONS_Y_RATIO = 0.72;
 const ITEM_SIZE = 80;
 
+const EMOJI_LABELS = ['👀', '🤔', '🧐', '🔍'];
+const STREAK_EMOJIS = ['⭐', '🔥', '🎉', '💪', '✨'];
+
 /**
  * PuzzleScene: Core gameplay — shows pattern sequence and 3 answer choices.
  */
@@ -20,23 +23,29 @@ export class PuzzleScene extends Phaser.Scene {
   private progressText!: Phaser.GameObjects.Text;
   private structurePreview!: Phaser.GameObjects.Container;
   private locked = false; // prevent double-tap
+  private streak = 0;
 
   constructor() {
     super({ key: 'PuzzleScene' });
   }
 
-  init(data: { rewardManager?: RewardManager }): void {
+  init(data: { rewardManager?: RewardManager; streak?: number }): void {
     if (data?.rewardManager) {
       this.rewardManager = data.rewardManager;
     } else {
       this.rewardManager = new RewardManager();
     }
+    this.streak = data?.streak ?? 0;
     this.generator = new PatternGenerator();
   }
 
   create(): void {
-    this.cameras.main.setBackgroundColor('#FFF9F0');
-    this.cameras.main.fadeIn(250, 255, 249, 240);
+    // Themed background based on current structure
+    const structure = this.rewardManager.getCurrentStructure();
+    const bg = structure.pastelBg;
+    this.cameras.main.setBackgroundColor(bg);
+    const bgRgb = Phaser.Display.Color.HexStringToColor(bg);
+    this.cameras.main.fadeIn(250, bgRgb.red, bgRgb.green, bgRgb.blue);
 
     this.buildProgressBar();
     this.buildStructurePreview();
@@ -61,7 +70,8 @@ export class PuzzleScene extends Phaser.Scene {
     const filled = this.rewardManager.getFilledCount();
     const total = this.rewardManager.getTotalSlots();
     const name = this.rewardManager.getCurrentStructure().name;
-    this.progressText.setText(`Building: ${name}   ${filled}/${total} 🧱`);
+    const streakSuffix = this.streak >= 3 ? `  🔥${this.streak}` : '';
+    this.progressText.setText(`Building: ${name}   ${filled}/${total} 🧱${streakSuffix}`);
   }
 
   // ─── Structure mini preview ───────────────────────────────────────────────
@@ -130,6 +140,17 @@ export class PuzzleScene extends Phaser.Scene {
       const img = this.add.image(x, y, key).setDisplaySize(ITEM_SIZE, ITEM_SIZE);
       this.tagPuzzleItem(img);
 
+      // Stagger-animate each item bouncing in
+      img.setScale(0);
+      this.tweens.add({
+        targets: img,
+        scaleX: ITEM_SIZE / img.width,
+        scaleY: ITEM_SIZE / img.height,
+        delay: i * 100,
+        duration: 250,
+        ease: 'Back.easeOut',
+      });
+
       if (key === 'question') {
         const qText = this.add
           .text(x, y, '?', {
@@ -138,20 +159,64 @@ export class PuzzleScene extends Phaser.Scene {
             color: '#7f8c8d',
             fontStyle: 'bold',
           })
-          .setOrigin(0.5);
+          .setOrigin(0.5)
+          .setScale(0);
         this.tagPuzzleItem(qText);
+
+        // Appear with the image, then pulse forever
+        this.tweens.add({
+          targets: qText,
+          scaleX: 1,
+          scaleY: 1,
+          delay: i * 100,
+          duration: 250,
+          ease: 'Back.easeOut',
+          onComplete: () => {
+            this.tweens.add({
+              targets: qText,
+              scaleX: 1.2,
+              scaleY: 1.2,
+              duration: 600,
+              yoyo: true,
+              repeat: -1,
+              ease: 'Sine.easeInOut',
+            });
+          },
+        });
+
+        // Pulse the question image too
+        this.time.delayedCall(i * 100 + 250, () => {
+          this.tweens.add({
+            targets: img,
+            scaleX: (ITEM_SIZE / img.width) * 1.15,
+            scaleY: (ITEM_SIZE / img.height) * 1.15,
+            duration: 600,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut',
+          });
+        });
       }
     });
 
-    // Label at top
+    // Emoji label instead of text — pick a random emoji pair
+    const emoji = Phaser.Utils.Array.GetRandom(EMOJI_LABELS);
     const label = this.add
-      .text(width / 2, height * SEQUENCE_Y_RATIO - 68, "What comes next?", {
-        fontSize: '28px',
-        fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
-        color: '#2c3e50',
+      .text(width / 2, height * SEQUENCE_Y_RATIO - 68, emoji, {
+        fontSize: '44px',
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setAlpha(0);
     this.tagPuzzleItem(label);
+
+    this.tweens.add({
+      targets: label,
+      alpha: 1,
+      y: height * SEQUENCE_Y_RATIO - 72,
+      duration: 400,
+      delay: items.length * 100,
+      ease: 'Quad.easeOut',
+    });
   }
 
   // ─── Options ─────────────────────────────────────────────────────────────
@@ -208,8 +273,10 @@ export class PuzzleScene extends Phaser.Scene {
     this.locked = true;
 
     if (key === this.puzzle.correctAnswer) {
+      this.streak++;
       this.handleCorrect(container);
     } else {
+      this.streak = 0;
       this.wrongAttempts++;
       this.handleWrong(container);
     }
@@ -222,6 +289,12 @@ export class PuzzleScene extends Phaser.Scene {
     bg.fillStyle(0x2ecc71, 1);
     bg.fillRoundedRect(-54, -54, 108, 108, 16);
 
+    // Streak celebration (before flying away)
+    if (this.streak >= 3) {
+      this.playStreakCelebration();
+    }
+
+    // Scale up, then fly the correct answer image toward the structure preview
     this.tweens.add({
       targets: container,
       scaleX: 1.15,
@@ -230,14 +303,91 @@ export class PuzzleScene extends Phaser.Scene {
       yoyo: true,
       ease: 'Back.easeOut',
       onComplete: () => {
+        this.flyToStructure(container);
+      },
+    });
+  }
+
+  /** Animate the selected option flying to the structure preview, then transition. */
+  private flyToStructure(container: Phaser.GameObjects.Container): void {
+    const { width } = this.scale;
+    const targetX = width - 60;
+    const targetY = 60;
+
+    this.tweens.add({
+      targets: container,
+      x: targetX,
+      y: targetY,
+      scaleX: 0.3,
+      scaleY: 0.3,
+      duration: 400,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
         const blockPos = this.rewardManager.addBlock();
         this.scene.start('BuildScene', {
           blockPos,
           rewardManager: this.rewardManager,
           isComplete: this.rewardManager.isStructureComplete(),
+          streak: this.streak,
         });
       },
     });
+  }
+
+  /** Big confetti + flying emoji for 3+ streak */
+  private playStreakCelebration(): void {
+    const { width, height } = this.scale;
+    const emoji = Phaser.Utils.Array.GetRandom(STREAK_EMOJIS);
+    const streakText = this.add
+      .text(width / 2, height * 0.55, `${emoji} ${this.streak}x ${emoji}`, {
+        fontSize: '48px',
+        fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
+      })
+      .setOrigin(0.5)
+      .setScale(0);
+    this.tagPuzzleItem(streakText);
+
+    this.tweens.add({
+      targets: streakText,
+      scaleX: 1.2,
+      scaleY: 1.2,
+      alpha: 0,
+      duration: 900,
+      ease: 'Quad.easeOut',
+      onStart: () => streakText.setScale(0.3).setAlpha(1),
+    });
+
+    // Confetti burst from center
+    this.spawnConfetti(width / 2, height * 0.55, 12);
+  }
+
+  /** Spawn confetti particles */
+  private spawnConfetti(x: number, y: number, count = 8): void {
+    const colors = [0xe74c3c, 0x3498db, 0xf1c40f, 0x2ecc71, 0xe67e22, 0x9b59b6];
+    for (let i = 0; i < count; i++) {
+      const particle = this.add.graphics();
+      particle.fillStyle(Phaser.Utils.Array.GetRandom(colors), 1);
+      particle.fillRect(-4, -4, 8, 8);
+      particle.x = x;
+      particle.y = y;
+      this.tagPuzzleItem(particle);
+
+      const angle = Phaser.Math.Between(0, 360);
+      const speed = Phaser.Math.Between(60, 160);
+      const vx = Math.cos(Phaser.Math.DegToRad(angle)) * speed;
+      const vy = Math.sin(Phaser.Math.DegToRad(angle)) * speed;
+
+      this.tweens.add({
+        targets: particle,
+        x: particle.x + vx,
+        y: particle.y + vy + 60,
+        angle: Phaser.Math.Between(-360, 360),
+        alpha: 0,
+        duration: 600,
+        ease: 'Quad.easeOut',
+        onComplete: () => particle.destroy(),
+      });
+    }
   }
 
   private handleWrong(container: Phaser.GameObjects.Container): void {

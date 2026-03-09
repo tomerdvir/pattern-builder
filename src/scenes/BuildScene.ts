@@ -2,7 +2,10 @@ import Phaser from 'phaser';
 import { RewardManager } from '../core/RewardManager';
 import { BlockPosition } from '../config/structures';
 
-const AUTO_ADVANCE_MS = 2200;
+const AUTO_ADVANCE_MS = 3500;
+const AUTO_ADVANCE_COMPLETE_MS = 4500;
+
+const REACTION_EMOJIS = ['⭐', '👏', '💎', '🌟', '🎯'];
 
 /**
  * BuildScene: Animates the newly earned block being placed on the structure.
@@ -12,34 +15,44 @@ export class BuildScene extends Phaser.Scene {
   private rewardManager!: RewardManager;
   private blockPos!: BlockPosition;
   private isComplete = false;
+  private streak = 0;
+  private advanced = false;
 
   constructor() {
     super({ key: 'BuildScene' });
   }
 
-  init(data: { blockPos: BlockPosition; rewardManager: RewardManager; isComplete: boolean }): void {
+  init(data: { blockPos: BlockPosition; rewardManager: RewardManager; isComplete: boolean; streak?: number }): void {
     this.blockPos = data.blockPos;
     this.rewardManager = data.rewardManager;
     this.isComplete = data.isComplete;
+    this.streak = data.streak ?? 0;
+    this.advanced = false;
   }
 
   create(): void {
     const { width, height } = this.scale;
-    this.cameras.main.setBackgroundColor('#FFF9F0');
-    this.cameras.main.fadeIn(200, 255, 249, 240);
 
+    // Themed background
     const structure = this.rewardManager.getCurrentStructure();
+    const bg = structure.pastelBg;
+    this.cameras.main.setBackgroundColor(bg);
+    const bgRgb = Phaser.Display.Color.HexStringToColor(bg);
+    this.cameras.main.fadeIn(200, bgRgb.red, bgRgb.green, bgRgb.blue);
+
     const anchorX = width / 2;
     const anchorY = height * 0.62;
 
-    // Draw all already-filled slots
+    // Draw all already-filled slots (storing refs for ripple)
     const filled = this.rewardManager.getFilledCount(); // already includes new block
+    const existingBlocks: Phaser.GameObjects.Image[] = [];
     structure.slots.forEach((slot, i) => {
-      if (i < filled) {
-        this.add
+      if (i < filled - 1) {
+        const block = this.add
           .image(anchorX + slot.x, anchorY + slot.y, 'block')
           .setDisplaySize(64, 64)
           .setTint(structure.color);
+        existingBlocks.push(block);
       }
     });
 
@@ -56,11 +69,30 @@ export class BuildScene extends Phaser.Scene {
       alpha: 1,
       duration: 350,
       ease: 'Bounce.easeOut',
+      onComplete: () => {
+        // Ripple wave on all existing blocks when the new block lands
+        existingBlocks.forEach((block, i) => {
+          this.tweens.add({
+            targets: block,
+            scaleX: 1.2,
+            scaleY: 1.2,
+            duration: 150,
+            delay: i * 40,
+            yoyo: true,
+            ease: 'Sine.easeInOut',
+          });
+        });
+      },
     });
 
-    // Particle burst
+    // Particle burst when block lands
     this.time.delayedCall(350, () => {
       this.spawnConfetti(anchorX + this.blockPos.x, anchorY + this.blockPos.y);
+    });
+
+    // Big emoji reaction after landing
+    this.time.delayedCall(400, () => {
+      this.showEmojiReaction(anchorX + this.blockPos.x, anchorY + this.blockPos.y - 60);
     });
 
     if (this.isComplete) {
@@ -70,7 +102,37 @@ export class BuildScene extends Phaser.Scene {
     }
 
     // Auto-advance
-    this.time.delayedCall(AUTO_ADVANCE_MS, () => this.advanceToNextPuzzle());
+    const delay = this.isComplete ? AUTO_ADVANCE_COMPLETE_MS : AUTO_ADVANCE_MS;
+    this.time.delayedCall(delay, () => this.advanceToNextPuzzle());
+  }
+
+  /** Show a big emoji that scales in and fades out */
+  private showEmojiReaction(x: number, y: number): void {
+    const emoji = Phaser.Utils.Array.GetRandom(REACTION_EMOJIS);
+    const reaction = this.add
+      .text(x, y, emoji, { fontSize: '56px' })
+      .setOrigin(0.5)
+      .setScale(0);
+
+    this.tweens.add({
+      targets: reaction,
+      scaleX: 1.3,
+      scaleY: 1.3,
+      y: y - 40,
+      duration: 500,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: reaction,
+          alpha: 0,
+          y: y - 70,
+          duration: 400,
+          delay: 300,
+          ease: 'Quad.easeIn',
+          onComplete: () => reaction.destroy(),
+        });
+      },
+    });
   }
 
   private showNextButton(): void {
@@ -105,7 +167,7 @@ export class BuildScene extends Phaser.Scene {
     }
 
     const name = this.rewardManager.getCurrentStructure().name;
-    this.add
+    const celebrationText = this.add
       .text(width / 2, height * 0.18, `🎉 ${name.toUpperCase()} BUILT! 🎉`, {
         fontSize: '32px',
         fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
@@ -116,12 +178,24 @@ export class BuildScene extends Phaser.Scene {
       .setAlpha(0);
 
     this.tweens.add({
-      targets: this.children.getAll().slice(-1)[0],
+      targets: celebrationText,
       alpha: 1,
       scaleX: 1.1,
       scaleY: 1.1,
       duration: 500,
       ease: 'Back.easeOut',
+      onComplete: () => {
+        // Bounce the whole structure container
+        this.tweens.add({
+          targets: celebrationText,
+          scaleX: 1.0,
+          scaleY: 1.0,
+          duration: 300,
+          yoyo: true,
+          repeat: 2,
+          ease: 'Sine.easeInOut',
+        });
+      },
     });
 
     this.rewardManager.advanceStructure();
@@ -169,9 +243,15 @@ export class BuildScene extends Phaser.Scene {
   }
 
   private advanceToNextPuzzle(): void {
-    this.cameras.main.fadeOut(250, 255, 249, 240);
+    if (this.advanced) return;
+    this.advanced = true;
+
+    const structure = this.rewardManager.getCurrentStructure();
+    const bg = structure.pastelBg;
+    const bgRgb = Phaser.Display.Color.HexStringToColor(bg);
+    this.cameras.main.fadeOut(250, bgRgb.red, bgRgb.green, bgRgb.blue);
     this.cameras.main.once('camerafadeoutcomplete', () => {
-      this.scene.start('PuzzleScene', { rewardManager: this.rewardManager });
+      this.scene.start('PuzzleScene', { rewardManager: this.rewardManager, streak: this.streak });
     });
   }
 }
