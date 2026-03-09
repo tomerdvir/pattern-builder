@@ -24,6 +24,8 @@ export class PuzzleScene extends Phaser.Scene {
   private structurePreview!: Phaser.GameObjects.Container;
   private locked = false; // prevent double-tap
   private streak = 0;
+  private questionSlot: { x: number; y: number } = { x: 0, y: 0 };
+  private questionOverlays: Phaser.GameObjects.GameObject[] = [];
 
   constructor() {
     super({ key: 'PuzzleScene' });
@@ -152,6 +154,9 @@ export class PuzzleScene extends Phaser.Scene {
       });
 
       if (key === 'question') {
+        this.questionSlot = { x, y };
+        this.questionOverlays = [img];
+
         const qText = this.add
           .text(x, y, '?', {
             fontSize: '40px',
@@ -162,6 +167,7 @@ export class PuzzleScene extends Phaser.Scene {
           .setOrigin(0.5)
           .setScale(0);
         this.tagPuzzleItem(qText);
+        this.questionOverlays.push(qText);
 
         // Appear with the image, then pulse forever
         this.tweens.add({
@@ -294,7 +300,7 @@ export class PuzzleScene extends Phaser.Scene {
       this.playStreakCelebration();
     }
 
-    // Scale up, then fly the correct answer image toward the structure preview
+    // Scale up, then fly to the question slot to complete the pattern
     this.tweens.add({
       targets: container,
       scaleX: 1.15,
@@ -303,12 +309,38 @@ export class PuzzleScene extends Phaser.Scene {
       yoyo: true,
       ease: 'Back.easeOut',
       onComplete: () => {
-        this.flyToStructure(container);
+        this.flyToPatternSlot(container);
       },
     });
   }
 
-  /** Animate the selected option flying to the structure preview, then transition. */
+  /** Animate the selected option flying to the question slot to complete the pattern. */
+  private flyToPatternSlot(container: Phaser.GameObjects.Container): void {
+    const { x: slotX, y: slotY } = this.questionSlot;
+
+    // Fade out the question-mark overlays (the "?" image and text)
+    this.questionOverlays.forEach((obj) => {
+      this.tweens.add({ targets: obj, alpha: 0, duration: 200 });
+    });
+
+    this.tweens.add({
+      targets: container,
+      x: slotX,
+      y: slotY,
+      scaleX: ITEM_SIZE / (container.getAt(1) as Phaser.GameObjects.Image).width,
+      scaleY: ITEM_SIZE / (container.getAt(1) as Phaser.GameObjects.Image).height,
+      duration: 350,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        // Brief pause so the child sees the completed pattern
+        this.time.delayedCall(600, () => {
+          this.flyToStructure(container);
+        });
+      },
+    });
+  }
+
+  /** Animate from the pattern slot to the structure preview, then transition. */
   private flyToStructure(container: Phaser.GameObjects.Container): void {
     const { width } = this.scale;
     const targetX = width - 60;
