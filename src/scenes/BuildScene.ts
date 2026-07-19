@@ -43,8 +43,19 @@ export class BuildScene extends Phaser.Scene {
     const anchorX = width / 2;
     const anchorY = height * 0.62;
 
-    // Draw all already-filled slots (storing refs for ripple)
+    // Ghost outline of the full goal shape so the child sees what they're building
     const filled = this.rewardManager.getFilledCount(); // already includes new block
+    structure.slots.forEach((slot, i) => {
+      if (i >= filled) {
+        this.add
+          .image(anchorX + slot.x, anchorY + slot.y, 'block')
+          .setDisplaySize(64, 64)
+          .setTint(0xb2bec3)
+          .setAlpha(0.25);
+      }
+    });
+
+    // Draw all already-filled slots (storing refs for ripple)
     const existingBlocks: Phaser.GameObjects.Image[] = [];
     structure.slots.forEach((slot, i) => {
       if (i < filled - 1) {
@@ -166,6 +177,35 @@ export class BuildScene extends Phaser.Scene {
       });
     }
 
+    // Googly eyes on the finished structure — it comes alive!
+    // (Compute the top slot now, before advanceStructure() switches templates.)
+    const structure = this.rewardManager.getCurrentStructure();
+    const top = [...structure.slots].sort((a, b) => a.y - b.y || Math.abs(a.x) - Math.abs(b.x))[0];
+    this.time.delayedCall(500, () => {
+      this.addGooglyEyes(anchorX + top.x, anchorY + top.y);
+    });
+
+    // Trophy shelf: one trophy per structure built so far (including this one)
+    const trophies = Math.min(this.rewardManager.getCompletedCount() + 1, 10);
+    const trophyRow = this.add.container(width / 2, height * 0.27);
+    const spacing = Math.min(40, (width - 60) / trophies);
+    const startX = -((trophies - 1) * spacing) / 2;
+    for (let i = 0; i < trophies; i++) {
+      const t = this.add
+        .text(startX + i * spacing, 0, '🏆', { fontSize: '30px' })
+        .setOrigin(0.5)
+        .setScale(0);
+      trophyRow.add(t);
+      this.tweens.add({
+        targets: t,
+        scaleX: 1,
+        scaleY: 1,
+        delay: 600 + i * 120,
+        duration: 300,
+        ease: 'Back.easeOut',
+      });
+    }
+
     const name = this.rewardManager.getCurrentStructure().name;
     const celebrationText = this.add
       .text(width / 2, height * 0.18, `🎉 ${name.toUpperCase()} BUILT! 🎉`, {
@@ -213,6 +253,46 @@ export class BuildScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
 
     btn.on('pointerdown', () => this.advanceToNextPuzzle());
+  }
+
+  /** Put a pair of blinking googly eyes at the given position (top block of the structure). */
+  private addGooglyEyes(cx: number, cy: number): void {
+    const eyes = this.add.container(cx, cy);
+    for (const dx of [-13, 13]) {
+      const white = this.add.graphics();
+      white.fillStyle(0xffffff, 1);
+      white.fillCircle(dx, -4, 10);
+      white.lineStyle(2, 0x2c3e50, 0.6);
+      white.strokeCircle(dx, -4, 10);
+      const pupil = this.add.graphics();
+      pupil.fillStyle(0x2c3e50, 1);
+      pupil.fillCircle(dx, -2, 4.5);
+      eyes.add([white, pupil]);
+    }
+
+    eyes.setScale(0);
+    this.tweens.add({
+      targets: eyes,
+      scaleX: 1,
+      scaleY: 1,
+      duration: 300,
+      ease: 'Back.easeOut',
+    });
+
+    // Blink every couple of seconds
+    this.time.addEvent({
+      delay: 1800,
+      loop: true,
+      callback: () => {
+        this.tweens.add({
+          targets: eyes,
+          scaleY: 0.1,
+          duration: 90,
+          yoyo: true,
+          ease: 'Quad.easeInOut',
+        });
+      },
+    });
   }
 
   private spawnConfetti(x: number, y: number): void {

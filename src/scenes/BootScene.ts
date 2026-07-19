@@ -22,6 +22,8 @@ export class BootScene extends Phaser.Scene {
     this.generatePlayButton();
     this.generateGrowAssets();
     this.generateObjectSprites();
+    this.generateComboSprites();
+    this.generateArrowSprites();
 
     this.scene.start('StartScene');
   }
@@ -233,6 +235,81 @@ export class BootScene extends Phaser.Scene {
       g.fillStyle(0xf1c40f, 1);
       g.fillCircle(40, 40, 13);
       g.generateTexture('flower', 80, 80);
+      g.destroy();
+    }
+  }
+
+  /** Generate color+shape combo sprites (e.g. red_circle, blue_star) for combo patterns. */
+  private generateComboSprites(): void {
+    const colors: Record<string, number> = {
+      red: 0xe74c3c,
+      blue: 0x3498db,
+      yellow: 0xf1c40f,
+      green: 0x2ecc71,
+      orange: 0xe67e22,
+      purple: 0x9b59b6,
+    };
+
+    for (const [colorName, hex] of Object.entries(colors)) {
+      for (const shape of ['circle', 'square', 'triangle', 'star', 'heart']) {
+        const g = this.makeG();
+        g.fillStyle(hex, 1);
+        switch (shape) {
+          case 'circle':
+            g.fillCircle(40, 40, 36);
+            break;
+          case 'square':
+            g.fillRect(4, 4, 72, 72);
+            break;
+          case 'triangle':
+            g.fillTriangle(40, 4, 76, 76, 4, 76);
+            break;
+          case 'star':
+            this.drawStar(g, 40, 40, 5, 36, 16);
+            break;
+          case 'heart':
+            this.drawHeart(g, 40, 40, 32);
+            break;
+        }
+        g.generateTexture(`${colorName}_${shape}`, 80, 80);
+        g.destroy();
+      }
+    }
+  }
+
+  /** Generate arrow_up / arrow_right / arrow_down / arrow_left for rotation patterns. */
+  private generateArrowSprites(): void {
+    // Points of an up-pointing arrow (head triangle + shaft), centered in 80x80
+    const upPoints: [number, number][] = [
+      [40, 6],   // tip
+      [66, 36],  // head right
+      [50, 36],  // shaft top-right
+      [50, 74],  // shaft bottom-right
+      [30, 74],  // shaft bottom-left
+      [30, 36],  // shaft top-left
+      [14, 36],  // head left
+    ];
+
+    const rotations: Record<string, number> = {
+      arrow_up: 0,
+      arrow_right: Math.PI / 2,
+      arrow_down: Math.PI,
+      arrow_left: (3 * Math.PI) / 2,
+    };
+
+    for (const [name, angle] of Object.entries(rotations)) {
+      const g = this.makeG();
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const pts = upPoints.map(([x, y]) => ({
+        x: 40 + (x - 40) * cos - (y - 40) * sin,
+        y: 40 + (x - 40) * sin + (y - 40) * cos,
+      }));
+      g.fillStyle(0x8e44ad, 1);
+      g.fillPoints(pts, true);
+      g.lineStyle(3, 0x000000, 0.15);
+      g.strokePoints([...pts, pts[0]], false);
+      g.generateTexture(name, 80, 80);
       g.destroy();
     }
   }

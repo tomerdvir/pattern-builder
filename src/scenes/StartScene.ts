@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
+import { RewardManager } from '../core/RewardManager';
 
 /**
- * StartScene: Shows the game logo/title and a big PLAY button.
+ * StartScene: Shows the game logo/title, a trophy shelf of past builds, and a big PLAY button.
  */
 export class StartScene extends Phaser.Scene {
   constructor() {
@@ -37,6 +38,28 @@ export class StartScene extends Phaser.Scene {
         color: '#7f8c8d',
       })
       .setOrigin(0.5);
+
+    // Trophy shelf — one trophy per structure built in past sessions
+    const completed = new RewardManager().getCompletedCount();
+    if (completed > 0) {
+      const trophies = Math.min(completed, 10);
+      const spacing = Math.min(40, (width - 60) / trophies);
+      const startX = width / 2 - ((trophies - 1) * spacing) / 2;
+      for (let i = 0; i < trophies; i++) {
+        const t = this.add
+          .text(startX + i * spacing, height * 0.64, '🏆', { fontSize: '28px' })
+          .setOrigin(0.5)
+          .setScale(0);
+        this.tweens.add({
+          targets: t,
+          scaleX: 1,
+          scaleY: 1,
+          delay: 200 + i * 100,
+          duration: 300,
+          ease: 'Back.easeOut',
+        });
+      }
+    }
 
     // Play button
     const btn = this.add
